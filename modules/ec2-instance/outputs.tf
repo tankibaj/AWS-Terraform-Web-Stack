@@ -1,4 +1,4 @@
-output "id" {
+output "instance_ids" {
   description = "List of IDs of instances"
   value       = aws_instance.this.*.id
 }

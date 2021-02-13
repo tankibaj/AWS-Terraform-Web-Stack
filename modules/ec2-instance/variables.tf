@@ -30,7 +30,12 @@ variable "monitoring" {
   default     = false
 }
 
-variable "vpc_security_group_ids" {
+variable "subnet_ids" {
+  description = "A list of subnet IDs for EC2 instances"
+  type        = list(string)
+}
+
+variable "security_group_ids" {
   description = "A list of security group IDs to associate with EC2 instances"
   type        = list(string)
 }
