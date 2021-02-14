@@ -1,3 +1,8 @@
+variable "name" {
+  description = "Instance name"
+  type        = string
+}
+
 variable "instance_count" {
   description = "Number of EC2 instances to deploy"
   type        = number
@@ -6,7 +11,12 @@ variable "instance_count" {
 variable "ami_id" {
   description = "Define a variable for AMI id"
   type        = string
-  default     = "ami-0502e817a62226e03" # Ubuntu Server 20.04 LTS (HVM)
+}
+
+variable "associate_public_ip" {
+  description = "Whether to associate a public IP address with an instance in a VPC"
+  type        = bool
+  default     = false
 }
 
 variable "instance_type" {
@@ -40,17 +50,14 @@ variable "security_group_ids" {
   type        = list(string)
 }
 
-variable "name" {
-  description = "Name of the instance"
+variable "user_data" {
+  description = "The user data to provide when launching the instance"
   type        = string
+  default     = null
 }
 
-variable "environment" {
-  description = "Name of the environment"
-  type        = string
-}
-
-variable "description" {
-  description = "Description of the instance"
-  type        = string
+variable "tags" {
+  description = "A mapping of tags to assign to the resource"
+  type        = map(string)
+  default     = {}
 }

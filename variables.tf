@@ -4,27 +4,30 @@ variable "region" {
   default     = "eu-central-1"
 }
 
-variable "environment" {
+variable "env" {
   description = "Map of environment names to configuration"
   type        = map(any)
   default = {
     public = {
-      subnet_count   = 3,
-      instance_count = 2,
-      # instances_per_subnet = 2,
-      instance_type = "t2.micro",
-      monitoring    = true,
-      key_name      = "thenaim",
-      description   = "Managed by Terraform"
+      subnet_count        = 3,
+      instance_count      = 2,
+      ami_id              = "ami-0502e817a62226e03" # Ubuntu Server 20.04 LTS (HVM)
+      associate_public_ip = true
+      instance_type       = "t2.micro", # Free tier
+      monitoring          = true,
+      key_name            = "thenaim",
+      env_type            = "Public Subnet"
+      description         = "Managed by Terraform"
     },
     private = {
       subnet_count   = 3,
       instance_count = 1,
-      # instances_per_subnet = 1,
-      instance_type = "t2.micro",
-      key_name      = "thenaim",
-      monitoring    = false,
-      description   = "Managed by Terraform"
+      ami_id         = "ami-0502e817a62226e03" # Ubuntu Server 20.04 LTS (HVM)
+      instance_type  = "t2.micro",             # Free tier
+      monitoring     = false,
+      key_name       = "thenaim",
+      env_type       = "Private Subnet"
+      description    = "Managed by Terraform"
     }
   }
 }

@@ -1,13 +1,19 @@
-# Configure the AWS Provider
-provider "aws" {
-  region                  = var.region
-  shared_credentials_file = "$HOME/.aws/credentials"
-}
-
-provider "random" {}
-
+# ****************************************************************
+# Random Name Generator
+# ****************************************************************
 resource "random_pet" "name" {}
 
+# ****************************************************************
+# Random ID Generator for Load Balancer
+# ****************************************************************
+resource "random_string" "lb_id" {
+  length  = 4
+  special = false
+}
+
+# ****************************************************************
+# VPC
+# ****************************************************************
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
@@ -15,8 +21,8 @@ module "vpc" {
   cidr = var.vpc_cidr_block
 
   azs             = data.aws_availability_zones.available.names
-  private_subnets = slice(var.private_subnet_cidr_blocks, 0, var.environment.public.subnet_count)
-  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, var.environment.private.subnet_count)
+  private_subnets = slice(var.private_subnet_cidr_blocks, 0, var.env.public.subnet_count)
+  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, var.env.private.subnet_count)
 
   enable_nat_gateway = true
 
@@ -27,6 +33,9 @@ module "vpc" {
   enable_vpn_gateway = false
 }
 
+# ****************************************************************
+# EC2 Instances Security Group
+# ****************************************************************
 module "ec2_security_group" {
   source = "terraform-aws-modules/security-group/aws"
 
@@ -45,12 +54,20 @@ module "ec2_security_group" {
 
   egress_cidr_blocks = ["0.0.0.0/0"]
   egress_rules       = ["all-all"]
+
+  tags = {
+    Env         = var.env.public.env_type
+    Description = var.env.public.description
+  }
 }
 
+# ****************************************************************
+# Application Load Balancer Security Group
+# ****************************************************************
 module "alb_security_group" {
   source = "terraform-aws-modules/security-group/aws"
 
-  name        = "load-balancer-sg-${random_pet.name.id}"
+  name        = "alb-sg-${random_pet.name.id}"
   description = "Allow HTTP publicly"
   vpc_id      = module.vpc.vpc_id
 
@@ -59,13 +76,16 @@ module "alb_security_group" {
 
   egress_cidr_blocks = ["0.0.0.0/0"]
   egress_rules       = ["all-all"]
+
+  tags = {
+    Env         = var.env.public.env_type
+    Description = var.env.public.description
+  }
 }
 
-resource "random_string" "lb_id" {
-  length  = 4
-  special = false
-}
-
+# ****************************************************************
+# Application Load Balancer
+# ****************************************************************
 module "alb" {
   source = "terraform-aws-modules/alb/aws"
 
@@ -108,51 +128,125 @@ module "alb" {
   ]
 
   tags = {
-    name        = random_pet.name.id
-    environment = "public"
-    description = var.environment.public.description
+    Env         = var.env.public.env_type
+    Description = var.env.public.description
   }
 }
 
-module "ec2_cluster_public" {
-  source = "./modules/ec2-instance"
+# ****************************************************************
+# EC2 Cluster for Public Subnets
+# ****************************************************************
+# module "ec2_cluster_public" {
+#   source = "./modules/ec2-instance"
 
-  instance_count     = var.environment.public.instance_count
-  instance_type      = var.environment.public.instance_type
-  availability_zone  = data.aws_availability_zones.available.names
-  key_name           = var.environment.public.key_name
-  subnet_ids         = module.vpc.public_subnets[*]
-  security_group_ids = [module.ec2_security_group.this_security_group_id]
-  monitoring         = var.environment.public.monitoring
+#   name                = random_pet.name.id
+#   instance_count      = var.env.public.instance_count
+#   ami_id              = var.env.public.ami_id
+#   associate_public_ip = var.env.public.associate_public_ip
+#   instance_type       = var.env.public.instance_type
+#   availability_zone   = data.aws_availability_zones.available.names
+#   key_name            = var.env.public.key_name
+#   subnet_ids          = module.vpc.public_subnets[*]
+#   security_group_ids  = [module.ec2_security_group.this_security_group_id]
+#   monitoring          = var.env.public.monitoring
+#   user_data           = file("user-data.yml")
 
-  name        = random_pet.name.id
-  environment = "public"
-  description = var.environment.public.description
-}
+#   tags = {
+#     Env         = var.env.public.env_type
+#     Description = var.env.public.description
+#   }
+# }
 
-module "lb_tg_attachment" {
-  source = "./modules/lb-target-group-attachment"
-
-  number_of_instances = length(module.ec2_cluster_public.instance_ids)
-  target_group_arn    = module.alb.target_group_arns
-  instance_ids        = module.ec2_cluster_public.instance_ids
-  port                = 80
-
-  depends_on = [module.alb, module.ec2_cluster_public]
-}
-
+# ****************************************************************
+# EC2 Cluster for Private Subnets
+# ****************************************************************
 # module "ec2_cluster_private" {
 #   source = "./modules/ec2-instance"
 
-#   instance_count     = var.environment.private.instance_count
-#   instance_type      = var.environment.private.instance_type
+#   name               = random_pet.name.id
+#   instance_count     = var.env.private.instance_count
+#   ami_id             = var.env.private.ami_id
+#   instance_type      = var.env.private.instance_type
 #   availability_zone  = data.aws_availability_zones.available.names
-#   key_name           = var.environment.private.key_name
+#   key_name           = var.env.private.key_name
 #   subnet_ids         = module.vpc.private_subnets[*]
 #   security_group_ids = [module.ec2_security_group.this_security_group_id]
-#   monitoring         = var.environment.private.monitoring
+#   monitoring         = var.env.private.monitoring
+#   user_data          = file("user-data.yml")
 
-#   name        = random_pet.name.id
-#   environment = "private"
-#   description = var.environment.private.description
+#   tags = {
+#     Env         = var.env.private.env_type
+#     Description = var.env.public.description
+#   }
 # }
+
+# ****************************************************************
+# Target Group for Application Load Balancer
+# ****************************************************************
+# module "target_group_alb" {
+#   source = "./modules/lb-target-group-attachment"
+
+#   number_of_instances = length(module.ec2_cluster_public.instance_ids)
+#   target_group_arn    = module.alb.target_group_arns
+#   instance_ids        = module.ec2_cluster_public.instance_ids
+#   port                = 80
+
+#   depends_on = [module.alb, module.ec2_cluster_public]
+# }
+
+# ****************************************************************
+# Auto Scaling Group - Public Subnets 
+# ****************************************************************
+module "asg_public" {
+  source = "terraform-aws-modules/autoscaling/aws"
+
+  name = "asg-${random_pet.name.id}"
+
+  # Launch configuration
+  lc_name = random_pet.name.id
+
+  image_id        = var.env.public.ami_id
+  instance_type   = var.env.public.instance_type
+  security_groups = [module.ec2_security_group.this_security_group_id]
+  key_name        = var.env.public.key_name
+  user_data       = file("user-data.yml")
+
+  ebs_block_device = [
+    {
+      device_name           = "/dev/xvdz"
+      volume_type           = "gp2"
+      volume_size           = "20"
+      delete_on_termination = true
+    },
+  ]
+
+  root_block_device = [
+    {
+      volume_size = "8"
+      volume_type = "gp2"
+    },
+  ]
+
+  # Auto scaling group
+  asg_name                  = random_pet.name.id
+  vpc_zone_identifier       = module.vpc.public_subnets
+  health_check_type         = "EC2"
+  min_size                  = 1
+  max_size                  = 4
+  desired_capacity          = 2
+  wait_for_capacity_timeout = 0
+  target_group_arns         = module.alb.target_group_arns
+
+  tags = [
+    {
+      key                 = "Env"
+      value               = var.env.public.env_type
+      propagate_at_launch = true
+    },
+    {
+      key                 = "Description"
+      value               = var.env.public.description
+      propagate_at_launch = true
+    },
+  ]
+}
