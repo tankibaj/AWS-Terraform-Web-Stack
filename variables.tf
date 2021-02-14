@@ -8,20 +8,18 @@ variable "environment" {
   description = "Map of environment names to configuration"
   type        = map(any)
   default = {
-    production = {
-      public_subnet_count  = 3,
-      private_subnet_count = 3,
-      instance_count       = 2,
+    public = {
+      subnet_count   = 3,
+      instance_count = 1,
       # instances_per_subnet = 2,
       instance_type = "t2.micro",
       monitoring    = true,
       key_name      = "thenaim",
       description   = "Managed by Terraform"
     },
-    development = {
-      public_subnet_count  = 1,
-      private_subnet_count = 1,
-      instance_count       = 1,
+    private = {
+      subnet_count   = 3,
+      instance_count = 1,
       # instances_per_subnet = 1,
       instance_type = "t2.micro",
       key_name      = "thenaim",
