@@ -1,11 +1,11 @@
-variable "create_attachment" {
-  description = "Create the elb attachment or not"
+variable "isEnabled" {
+  description = "Create the lb target group or not"
   type        = bool
   default     = true
 }
 
 variable "number_of_instances" {
-  description = "Number of instances ID to place in the ELB pool"
+  description = "Number of instances ID to place in the LB pool"
   type        = number
 }
 

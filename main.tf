@@ -1,4 +1,11 @@
 # ****************************************************************
+# Select all availability zones in the region
+# ****************************************************************
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# ****************************************************************
 # Random Name Generator
 # ****************************************************************
 resource "random_pet" "name" {}
@@ -15,7 +22,8 @@ resource "random_string" "lb_id" {
 # VPC
 # ****************************************************************
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "2.70.0"
 
   name = "vpc-${random_pet.name.id}"
   cidr = var.vpc_cidr_block
@@ -37,7 +45,8 @@ module "vpc" {
 # EC2 Instances Security Group
 # ****************************************************************
 module "ec2_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "3.17.0"
 
   name        = "ec2-sg-${random_pet.name.id}"
   description = "Allow HTTP within VPC and SSH public"
@@ -65,7 +74,8 @@ module "ec2_security_group" {
 # Application Load Balancer Security Group
 # ****************************************************************
 module "alb_security_group" {
-  source = "terraform-aws-modules/security-group/aws"
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "3.17.0"
 
   name        = "alb-sg-${random_pet.name.id}"
   description = "Allow HTTP publicly"
@@ -87,7 +97,8 @@ module "alb_security_group" {
 # Application Load Balancer
 # ****************************************************************
 module "alb" {
-  source = "terraform-aws-modules/alb/aws"
+  source  = "terraform-aws-modules/alb/aws"
+  version = "5.10.0"
 
   name     = trimsuffix(substr(replace(join("-", ["alb", random_string.lb_id.result, random_pet.name.id]), "/[^a-zA-Z0-9-]/", ""), 0, 32), "-")
   internal = false
@@ -104,7 +115,7 @@ module "alb" {
       backend_protocol     = "HTTP"
       backend_port         = 80
       target_type          = "instance"
-      deregistration_delay = 250
+      deregistration_delay = 60
       health_check = {
         enabled             = true
         interval            = 10
@@ -131,6 +142,7 @@ module "alb" {
     Env         = var.env.public.env_type
     Description = var.env.public.description
   }
+  depends_on = [module.vpc]
 }
 
 # ****************************************************************
@@ -198,7 +210,8 @@ module "alb" {
 # Auto Scaling Group - Public Subnets 
 # ****************************************************************
 module "asg_public" {
-  source = "terraform-aws-modules/autoscaling/aws"
+  source  = "terraform-aws-modules/autoscaling/aws"
+  version = "3.8.0"
 
   name = "asg-${random_pet.name.id}"
 
@@ -235,6 +248,8 @@ module "asg_public" {
   max_size                  = 4
   desired_capacity          = 2
   wait_for_capacity_timeout = 0
+  health_check_grace_period = 120
+  default_cooldown          = 120
   target_group_arns         = module.alb.target_group_arns
 
   tags = [
@@ -249,4 +264,17 @@ module "asg_public" {
       propagate_at_launch = true
     },
   ]
+  depends_on = [module.alb]
+}
+
+
+# ****************************************************************
+# Dynamic Auto Scaling Policy
+# ****************************************************************
+module "dynamic_autoscaling_policy" {
+  source = "./modules/dynamic-autoscaling-policy"
+
+  autoscaling_group_name = module.asg_public.this_autoscaling_group_name
+
+  depends_on = [module.asg_public]
 }
