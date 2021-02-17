@@ -1,6 +1,6 @@
 resource "aws_autoscaling_policy" "policy_scale_up" {
   count                  = var.isPolicyEnabled ? 1 : 0
-  name                   = "ScaleUp"
+  name                   = "${var.name}-ScaleUp"
   scaling_adjustment     = 1 # The number of instances by which to scale
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 120
@@ -9,16 +9,16 @@ resource "aws_autoscaling_policy" "policy_scale_up" {
 
 resource "aws_autoscaling_policy" "policy_scale_down" {
   count                  = var.isPolicyEnabled ? 1 : 0
-  name                   = "ScaleDown"
+  name                   = "${var.name}-ScaleDown"
   scaling_adjustment     = -1 # The number of instances by which to scale
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 120
   autoscaling_group_name = var.autoscaling_group_name
 }
 
-resource "aws_cloudwatch_metric_alarm" "cpu" {
+resource "aws_cloudwatch_metric_alarm" "policy_alarm" {
 
-  for_each = local.cpu
+  for_each = local.alarm
 
   alarm_name          = each.value.alarm_name
   comparison_operator = each.value.comparison_operator
@@ -35,38 +35,3 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
   }
   alarm_actions = each.value.alarm_actions
 }
-
-
-# resource "aws_cloudwatch_metric_alarm" "cpu_scale_up" {
-#   alarm_name          = "ScaleUpCpu"
-#   comparison_operator = "GreaterThanOrEqualToThreshold"
-#   evaluation_periods  = "2"
-#   metric_name         = "CPUUtilization"
-#   namespace           = "AWS/EC2"
-#   period              = "120" # The period in seconds over which the specified stat is applied.
-#   statistic           = "Average"
-#   threshold           = "80" # The value against which the specified statistic is compared.
-#   alarm_description   = "This metric monitors ec2 cpu utilization"
-
-#   dimensions = {
-#     AutoScalingGroupName = module.asg_public.this_autoscaling_group_name
-#   }
-#   alarm_actions = [aws_autoscaling_policy.policy_scale_up.arn]
-# }
-
-# resource "aws_cloudwatch_metric_alarm" "cpu_scale_down" {
-#   alarm_name          = "ScaleDownCpu"
-#   comparison_operator = "LessThanOrEqualToThreshold"
-#   evaluation_periods  = "2"
-#   metric_name         = "CPUUtilization"
-#   namespace           = "AWS/EC2"
-#   period              = "120" # The period in seconds over which the specified stat is applied.
-#   statistic           = "Average"
-#   threshold           = "70" # The value against which the specified statistic is compared.
-#   alarm_description   = "This metric monitors ec2 cpu utilization"
-
-#   dimensions = {
-#     AutoScalingGroupName = module.asg_public.this_autoscaling_group_name
-#   }
-#   alarm_actions = [aws_autoscaling_policy.policy_scale_down.arn]
-# }

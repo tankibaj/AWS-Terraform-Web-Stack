@@ -274,6 +274,7 @@ module "asg_public" {
 module "dynamic_autoscaling_policy" {
   source = "./modules/dynamic-autoscaling-policy"
 
+  name                   = random_pet.name.id
   autoscaling_group_name = module.asg_public.this_autoscaling_group_name
 
   depends_on = [module.asg_public]
