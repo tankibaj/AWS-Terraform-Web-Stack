@@ -28,9 +28,10 @@ module "vpc" {
   name = "vpc-${random_pet.name.id}"
   cidr = var.vpc_cidr_block
 
-  azs             = data.aws_availability_zones.available.names
-  private_subnets = slice(var.private_subnet_cidr_blocks, 0, var.env.public.subnet_count)
-  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, var.env.private.subnet_count)
+  azs              = data.aws_availability_zones.available.names
+  public_subnets   = slice(var.public_subnet_cidr_blocks, 0, var.env.public.subnet_count)
+  private_subnets  = slice(var.private_subnet_cidr_blocks, 0, var.env.private.subnet_count)
+  database_subnets = slice(var.database_subnets_cidr_blocks, 0, 3)
 
   enable_nat_gateway = false # If false.. Private subnet will have not intenet access.
   # single_nat_gateway     = false    # If true... One shared NAT gateway will be created for multiple AZ. (if NAT AZ goes down, private subnet in other AZs will lose Internet Access)
@@ -79,8 +80,8 @@ module "alb_security_group" {
   description = "Allow HTTP publicly"
   vpc_id      = module.vpc.vpc_id
 
-  ingress_rules       = ["http-80-tcp"]
   ingress_cidr_blocks = ["0.0.0.0/0"]
+  ingress_rules       = ["http-80-tcp"]
 
   egress_cidr_blocks = ["0.0.0.0/0"]
   egress_rules       = ["all-all"]
@@ -88,6 +89,29 @@ module "alb_security_group" {
   tags = {
     Env         = var.env.public.env_type
     Description = var.env.public.description
+  }
+}
+
+# ****************************************************************
+# RDS Security Group
+# ****************************************************************
+module "rds_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "3.17.0"
+
+  name        = "rds-sg-${random_pet.name.id}"
+  description = "Allow 3306 within vps public subnets"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks = module.vpc.public_subnets_cidr_blocks
+  ingress_rules       = ["all-icmp", "mysql-tcp"]
+
+  egress_cidr_blocks = ["0.0.0.0/0"]
+  egress_rules       = ["all-all"]
+
+  tags = {
+    Env         = var.env.private.env_type
+    Description = var.env.private.description
   }
 }
 
@@ -146,26 +170,26 @@ module "alb" {
 # ****************************************************************
 # EC2 Cluster for Public Subnets
 # ****************************************************************
-# module "ec2_cluster_public" {
-#   source = "./modules/ec2-instance"
+module "ec2_cluster_public" {
+  source = "./modules/ec2-instance"
 
-#   name                = random_pet.name.id
-#   instance_count      = var.env.public.instance_count
-#   ami_id              = var.env.public.ami_id
-#   associate_public_ip = var.env.public.associate_public_ip
-#   instance_type       = var.env.public.instance_type
-#   availability_zone   = data.aws_availability_zones.available.names
-#   key_name            = var.env.public.key_name
-#   subnet_ids          = module.vpc.public_subnets[*]
-#   security_group_ids  = [module.ec2_security_group.this_security_group_id]
-#   monitoring          = var.env.public.monitoring
-#   user_data           = file("user-data.yml")
+  name                = random_pet.name.id
+  instance_count      = var.env.public.instance_count
+  ami_id              = var.env.public.ami_id
+  associate_public_ip = var.env.public.associate_public_ip
+  instance_type       = var.env.public.instance_type
+  availability_zone   = data.aws_availability_zones.available.names
+  key_name            = var.env.public.key_name
+  subnet_ids          = module.vpc.public_subnets[*]
+  security_group_ids  = [module.ec2_security_group.this_security_group_id]
+  monitoring          = var.env.public.monitoring
+  user_data           = file("user-data.yml")
 
-#   tags = {
-#     Env         = var.env.public.env_type
-#     Description = var.env.public.description
-#   }
-# }
+  tags = {
+    Env         = var.env.public.env_type
+    Description = var.env.public.description
+  }
+}
 
 # ****************************************************************
 # EC2 Cluster for Private Subnets
@@ -186,94 +210,148 @@ module "alb" {
 
 #   tags = {
 #     Env         = var.env.private.env_type
-#     Description = var.env.public.description
+#     Description = var.env.private.description
 #   }
 # }
 
 # ****************************************************************
 # Target Group for Application Load Balancer
 # ****************************************************************
-# module "target_group_alb" {
-#   source = "./modules/lb-target-group-attachment"
+module "target_group_alb" {
+  source = "./modules/lb-target-group-attachment"
 
-#   number_of_instances = length(module.ec2_cluster_public.instance_ids)
-#   target_group_arn    = module.alb.target_group_arns
-#   instance_ids        = module.ec2_cluster_public.instance_ids
-#   port                = 80
+  number_of_instances = length(module.ec2_cluster_public.instance_ids)
+  target_group_arn    = module.alb.target_group_arns
+  instance_ids        = module.ec2_cluster_public.instance_ids
+  port                = 80
 
-#   depends_on = [module.alb, module.ec2_cluster_public]
-# }
-
-# ****************************************************************
-# Auto Scaling Group - Public Subnets 
-# ****************************************************************
-module "asg_public" {
-  source  = "terraform-aws-modules/autoscaling/aws"
-  version = "3.8.0"
-
-  name = "asg-${random_pet.name.id}"
-
-  # Launch configuration
-  lc_name = random_pet.name.id
-
-  image_id        = var.env.public.ami_id
-  instance_type   = var.env.public.instance_type
-  security_groups = [module.ec2_security_group.this_security_group_id]
-  key_name        = var.env.public.key_name
-  user_data       = file("user-data.yml")
-
-  ebs_block_device = [
-    {
-      device_name           = "/dev/xvdz"
-      volume_type           = "gp2"
-      volume_size           = "20"
-      delete_on_termination = true
-    },
-  ]
-
-  root_block_device = [
-    {
-      volume_size = "8"
-      volume_type = "gp2"
-    },
-  ]
-
-  # Auto scaling group
-  asg_name                  = random_pet.name.id
-  vpc_zone_identifier       = module.vpc.public_subnets
-  health_check_type         = "EC2"
-  min_size                  = 1
-  max_size                  = 4
-  desired_capacity          = 2
-  wait_for_capacity_timeout = 0
-  health_check_grace_period = 120
-  default_cooldown          = 120
-  target_group_arns         = module.alb.target_group_arns
-
-  tags = [
-    {
-      key                 = "Env"
-      value               = var.env.public.env_type
-      propagate_at_launch = true
-    },
-    {
-      key                 = "Description"
-      value               = var.env.public.description
-      propagate_at_launch = true
-    },
-  ]
-  depends_on = [module.alb]
+  depends_on = [module.alb, module.ec2_cluster_public]
 }
 
 
-# ****************************************************************
-# Dynamic Auto Scaling Policy
-# ****************************************************************
-module "dynamic_autoscaling_policy" {
-  source = "./modules/dynamic-autoscaling-policy"
 
-  name                   = random_pet.name.id
-  autoscaling_group_name = module.asg_public.this_autoscaling_group_name
 
-  depends_on = [module.asg_public]
+
+
+# # ****************************************************************
+# # Auto Scaling Group - Public Subnets 
+# # ****************************************************************
+# module "asg_public" {
+#   source  = "terraform-aws-modules/autoscaling/aws"
+#   version = "3.8.0"
+
+#   name = "asg-${random_pet.name.id}"
+
+#   # Launch configuration
+#   lc_name = random_pet.name.id
+
+#   image_id        = var.env.public.ami_id
+#   instance_type   = var.env.public.instance_type
+#   security_groups = [module.ec2_security_group.this_security_group_id]
+#   key_name        = var.env.public.key_name
+#   user_data       = file("user-data.yml")
+
+#   ebs_block_device = [
+#     {
+#       device_name           = "/dev/xvdz"
+#       volume_type           = "gp2"
+#       volume_size           = "20"
+#       delete_on_termination = true
+#     },
+#   ]
+
+#   root_block_device = [
+#     {
+#       volume_size = "8"
+#       volume_type = "gp2"
+#     },
+#   ]
+
+#   # Auto scaling group
+#   asg_name                  = random_pet.name.id
+#   vpc_zone_identifier       = module.vpc.public_subnets
+#   health_check_type         = "EC2"
+#   min_size                  = 1
+#   max_size                  = 4
+#   desired_capacity          = 2
+#   wait_for_capacity_timeout = 0
+#   health_check_grace_period = 120
+#   default_cooldown          = 120
+#   target_group_arns         = module.alb.target_group_arns
+
+#   tags = [
+#     {
+#       key                 = "Env"
+#       value               = var.env.public.env_type
+#       propagate_at_launch = true
+#     },
+#     {
+#       key                 = "Description"
+#       value               = var.env.public.description
+#       propagate_at_launch = true
+#     },
+#   ]
+#   depends_on = [module.alb]
+# }
+
+# # ****************************************************************
+# # Dynamic Auto Scaling Policy
+# # ****************************************************************
+# module "dynamic_autoscaling_policy" {
+#   source = "./modules/dynamic-autoscaling-policy"
+
+#   name                   = random_pet.name.id
+#   autoscaling_group_name = module.asg_public.this_autoscaling_group_name
+
+#   depends_on = [module.asg_public]
+# }
+
+# ****************************************************************
+# RDS
+# ****************************************************************
+module "rds" {
+  source  = "terraform-aws-modules/rds/aws"
+  version = "2.22.0"
+
+  identifier = "db-${random_pet.name.id}"
+
+  # All available versions: http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_MySQL.html#MySQL.Concepts.VersionMgmt
+  engine            = "mysql"
+  engine_version    = "8.0.21"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  storage_encrypted = false
+
+  # kms_key_id        = "arm:aws:kms:<region>:<account id>:key/<kms key id>"
+  username = "user"
+  password = "YourPwdShouldBeLongAndSecure!"
+  port     = "3306"
+
+  vpc_security_group_ids = [module.rds_security_group.this_security_group_id]
+
+  maintenance_window = "Mon:00:00-Mon:03:00"
+  backup_window      = "03:00-06:00"
+
+  multi_az = true
+
+  # disable backups to create DB faster
+  backup_retention_period = 0
+
+  # enabled_cloudwatch_logs_exports = ["audit", "general"]
+  enabled_cloudwatch_logs_exports = ["general"]
+
+  # DB subnet group
+  subnet_ids = module.vpc.database_subnets[*]
+
+  # DB parameter group
+  family = "mysql8.0"
+
+  # DB option group
+  major_engine_version = "8.0"
+
+  # Snapshot name upon DB deletion
+  final_snapshot_identifier = "demodb"
+
+  # Database Deletion Protection
+  deletion_protection = false
 }
