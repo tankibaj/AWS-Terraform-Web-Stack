@@ -318,40 +318,37 @@ module "rds" {
   # All available versions: http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_MySQL.html#MySQL.Concepts.VersionMgmt
   engine            = "mysql"
   engine_version    = "8.0.21"
+  major_engine_version = "8.0"
   instance_class    = "db.t3.micro"
   allocated_storage = 20
   storage_encrypted = false
+  multi_az = true
+  name = "" # Keep empty string to start without a database
 
-  # kms_key_id        = "arm:aws:kms:<region>:<account id>:key/<kms key id>"
-  username = "user"
+  # Creds
+  username = "admin"
   password = "YourPwdShouldBeLongAndSecure!"
+  # kms_key_id        = "arm:aws:kms:<region>:<account id>:key/<kms key id>"
+  iam_database_authentication_enabled = false
+
+  # Network
   port     = "3306"
-
   vpc_security_group_ids = [module.rds_security_group.this_security_group_id]
+  subnet_ids = module.vpc.database_subnets[*] # DB subnet group
+  publicly_accessible = false # Bool to control if instance is publicly accessible
 
+  # Backup
   maintenance_window = "Mon:00:00-Mon:03:00"
   backup_window      = "03:00-06:00"
+  backup_retention_period = 0  # [0] disable backups to create DB faster | Backups are required in order to create a replica [1]
+  deletion_protection = false # Database Deletion Protection
+  skip_final_snapshot = true # Determines whether a final DB snapshot is created before the DB instance is deleted
+  final_snapshot_identifier = "${random_pet.name.id}-snapshot" # Snapshot name upon DB deletion
 
-  multi_az = true
+  # Logs
+  enabled_cloudwatch_logs_exports = ["general", "slowquery"]
 
-  # disable backups to create DB faster
-  backup_retention_period = 0
-
-  # enabled_cloudwatch_logs_exports = ["audit", "general"]
-  enabled_cloudwatch_logs_exports = ["general"]
-
-  # DB subnet group
-  subnet_ids = module.vpc.database_subnets[*]
-
-  # DB parameter group
-  family = "mysql8.0"
-
-  # DB option group
-  major_engine_version = "8.0"
-
-  # Snapshot name upon DB deletion
-  final_snapshot_identifier = "demodb"
-
-  # Database Deletion Protection
-  deletion_protection = false
+  # Other options
+  create_db_option_group    = false
+  create_db_parameter_group = false
 }
