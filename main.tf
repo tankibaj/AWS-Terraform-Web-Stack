@@ -307,10 +307,10 @@ module "target_group_alb" {
 # }
 
 # ****************************************************************
-# RDS
+# MySQL Master
 # ****************************************************************
 module "mysql_master" {
-  source  = "./modules/rds"
+  source  = "./modules/mysql"
 
   identifier = "master-${random_pet.name.id}"
 
@@ -347,8 +347,11 @@ module "mysql_master" {
   enabled_cloudwatch_logs_exports = ["general", "slowquery"]
 }
 
+# ****************************************************************
+# MySQL Replica
+# ****************************************************************
 module "mysql_replica" {
-  source  = "./modules/rds"
+  source  = "./modules/mysql"
 
   identifier = "replica-${random_pet.name.id}"
 
