@@ -32,3 +32,13 @@ output "alb_dns" {
 #   description = "The address of the RDS instance"
 #   value       = rds.db_instance_address
 # }
+
+output "mysql_master" {
+  description = "The connection endpoint"
+  value       = module.mysql_master.this_db_instance_endpoint
+}
+
+output "mysql_replica" {
+  description = "The connection endpoint"
+  value       = module.mysql_replica.this_db_instance_endpoint
+}
